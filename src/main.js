@@ -204,7 +204,7 @@ class IndieAuth {
 
     try {
       const data = {
-        grant_type: 'authorization_code', // TODO: Should this be customizable somehow?
+        grant_type: 'authorization_code',
         me: this.options.me,
         code: code,
         client_id: this.options.clientId,
