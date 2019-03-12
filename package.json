@@ -1,0 +1,34 @@
+{
+  "name": "indieauth-helper",
+  "version": "1.0.0",
+  "description": "A simple helper class for creating IndieAuth clients",
+  "keywords": [
+    "indieauth",
+    "indieweb"
+  ],
+  "homepage": "https://grantcodes.github.io/indieauth-helper",
+  "repository": "https://github.com/grantcodes/indieauth-helper",
+  "bugs": "https://github.com/grantcodes/indieauth-helper/issues",
+  "main": "./src/main.js",
+  "author": "Grant Richmond <mail@grant.codes> (https://grant.codes)",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.18.0",
+    "qs": "^6.6.0",
+    "rel-parser": "^1.0.2",
+    "crypto-js": "^3.1.9-1"
+  },
+  "scripts": {
+    "test": "ava tests/index.js",
+    "start": "echo 'Remember to fix the package.json before release' && node index.js"
+  },
+  "prettier": {
+    "singleQuote": true,
+    "trailingComma": "es5",
+    "semi": false
+  },
+  "devDependencies": {
+    "ava": "^1.2.0",
+    "express": "^4.16.4"
+  }
+}
