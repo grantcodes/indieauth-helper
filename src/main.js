@@ -271,9 +271,17 @@ class IndieAuth {
       )
     }
     try {
-      await this.getRelsFromUrl(this.options.me)
+      if (!this.options.authEndpoint) {
+        await this.getRelsFromUrl(this.options.me)
+      }
 
-      this.checkRequiredOptions(['me', 'state', 'clientId', 'redirectUri'])
+      this.checkRequiredOptions([
+        'me',
+        'state',
+        'clientId',
+        'redirectUri',
+        'authEndpoint',
+      ])
 
       const authUrl = new URL(this.options.authEndpoint)
       authUrl.searchParams.append('me', this.options.me)
