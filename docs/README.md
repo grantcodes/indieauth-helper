@@ -32,6 +32,11 @@ const auth = new IndieAuth({
   me: 'https://userindiewebsite.com',
   secret: 'topSecretString',
 })
+
+// If you are able to store a variable between sending the user to the auth url
+// and requesting the auth token you should also set a `codeVerifier`
+const codeVerifier = auth.generateRandomString()
+auth.options.codeVerifier = codeVerifier
 ```
 
 If you already have other information stored such as the auth endpoint you want to use you can also pass those in. The available options are:
@@ -41,7 +46,7 @@ If you already have other information stored such as the auth endpoint you want 
 - `redirectUri` - The redirect url of your IndieAuth client from the auth endpoint. This is the page where you will get the code to exchange for an access token.
 - `state` - A custom identifier to validate a response from the auth endpoint. If a state is not set and a secret is set then the state will be automatically generated and must be checked with the `validateState` method.
 - `secret` -A string that is used to encrypt and decrypt generated states
-- `token` - The authorization token
+- `codeVerifier` - A random string to use as a PKCE code verifier. It must be stored between sending the user to the auth url and requesting the auth token
 - `authEndpoint` - The authorization endpoint
 - `tokenEndpoint` - The token endpoint to receive the access toke from
 

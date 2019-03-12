@@ -5,7 +5,6 @@ const { parse: qsParse, stringify: qsStringify } = require('qs')
 
 const defaultSettings = {
   me: '',
-  token: '',
   authEndpoint: '',
   tokenEndpoint: '',
 }
@@ -211,6 +210,11 @@ class IndieAuth {
         redirect_uri: this.options.redirectUri,
       }
 
+      // Add PKCE code verifier if it is set
+      if (this.options.codeVerifier) {
+        data.code_verifier = this.options.codeVerifier
+      }
+
       const request = {
         url: this.options.tokenEndpoint,
         method: 'POST',
@@ -244,7 +248,6 @@ class IndieAuth {
         throw indieAuthError('The me values do not share the same hostname')
       }
       // Successfully got the token
-      this.options.token = result.access_token
       return result.access_token
     } catch (err) {
       throw indieAuthError(
@@ -292,6 +295,15 @@ class IndieAuth {
 
       if (scopes.length) {
         authUrl.searchParams.append('scope', scopes.join(' '))
+      }
+
+      // Add a PKCE code challenge if a code verifier is set.
+      if (responseType === 'code' && this.options.codeVerifier) {
+        const codeChallenge = encodeURIComponent(
+          CryptoJS.SHA256(this.options.codeVerifier)
+        )
+        authUrl.searchParams.append('code_challenge_method', 'S256')
+        authUrl.searchParams.append('code_challenge', codeChallenge)
       }
 
       return authUrl.toString()
@@ -363,17 +375,18 @@ class IndieAuth {
 
   /**
    * Verify the stored access token
+   * @param {string} The token to verify
    * @return {Promise} A promise that resolves true or rejects
    */
-  async verifyToken() {
-    this.checkRequiredOptions(['token', 'indieAuthEndpoint'])
+  async verifyToken(token) {
+    this.checkRequiredOptions(['indieAuthEndpoint'])
 
     try {
       const request = {
         url: this.options.indieAuthEndpoint,
         method: 'GET',
         headers: {
-          Authorization: 'Bearer ' + this.options.token,
+          Authorization: 'Bearer ' + token,
         },
       }
 
@@ -453,6 +466,18 @@ class IndieAuth {
     } catch (err) {
       return false
     }
+  }
+
+  /**
+   * Generates a cryptographically random string
+   * @param {int} length The character count of the random string. Defaults to 100. (NOTE: Will round up to an even number)
+   * @returns {string} The random string
+   */
+  generateRandomString(length = 100) {
+    // Create a random word array and convert it to a string
+    // 1 word = 2 characters
+    const wordArray = CryptoJS.lib.WordArray.random(Math.round(length / 2))
+    return wordArray.toString()
   }
 }
 
