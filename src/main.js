@@ -17,7 +17,7 @@ const defaultSettings = {
  * @return {object} A consistently formatted error object
  */
 const indieAuthError = (message, status = null, error = null) => {
-  if (error.message && error.error) {
+  if (error && error.message && error.error) {
     // Don't want to have nested errors.
     error = error.error
     message = error.message
