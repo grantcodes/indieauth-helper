@@ -92,6 +92,9 @@ class IndieAuth {
       method: 'GET',
       responseType: 'text',
       maxRedirects: 0,
+      headers: {
+        accept: 'text/html,application/xhtml+xml'
+      }
     }
 
     const getRedirectUrl = (to, from) => {
