@@ -1,6 +1,6 @@
 {
   "name": "indieauth-helper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A simple helper class for creating IndieAuth clients",
   "keywords": [
     "indieauth",
@@ -13,8 +13,8 @@
   "author": "Grant Richmond <mail@grant.codes> (https://grant.codes)",
   "license": "MIT",
   "dependencies": {
-    "axios": "^0.18.0",
-    "qs": "^6.6.0",
+    "axios": "^0.19.2",
+    "qs": "^6.9.3",
     "rel-parser": "^1.0.2",
     "crypto-js": "^3.1.9-1"
   },
@@ -29,6 +29,6 @@
   },
   "devDependencies": {
     "ava": "^1.2.0",
-    "express": "^4.16.4"
+    "express": "^4.17.1"
   }
 }
