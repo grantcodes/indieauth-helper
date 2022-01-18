@@ -12,23 +12,23 @@
   "main": "./src/main.js",
   "author": "Grant Richmond <mail@grant.codes> (https://grant.codes)",
   "license": "MIT",
+  "scripts": {
+    "test": "ava tests/index.js",
+    "start": "echo 'Remember to fix the package.json before release' && node index.js"
+  },
   "dependencies": {
-    "axios": "^0.19.2",
+    "axios": "^0.25.0",
     "qs": "^6.9.3",
     "rel-parser": "^1.0.2",
     "crypto-js": "^4.0.0"
   },
-  "scripts": {
-    "test": "ava tests/index.js",
-    "start": "echo 'Remember to fix the package.json before release' && node index.js"
+  "devDependencies": {
+    "ava": "^4.0.0",
+    "express": "^4.17.1"
   },
   "prettier": {
     "singleQuote": true,
     "trailingComma": "es5",
     "semi": false
-  },
-  "devDependencies": {
-    "ava": "^3.5.1",
-    "express": "^4.17.1"
   }
 }
