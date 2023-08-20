@@ -1,34 +1,65 @@
 {
   "name": "indieauth-helper",
-  "version": "1.0.2",
+  "version": "2.0.0",
   "description": "A simple helper class for creating IndieAuth clients",
   "keywords": [
     "indieauth",
     "indieweb"
   ],
-  "homepage": "https://grantcodes.github.io/indieauth-helper",
-  "repository": "https://github.com/grantcodes/indieauth-helper",
-  "bugs": "https://github.com/grantcodes/indieauth-helper/issues",
-  "main": "./src/main.js",
-  "author": "Grant Richmond <mail@grant.codes> (https://grant.codes)",
-  "license": "MIT",
-  "dependencies": {
-    "axios": "^0.19.2",
-    "qs": "^6.9.3",
-    "rel-parser": "^1.0.2",
-    "crypto-js": "^4.0.0"
+  "type": "module",
+  "main": "dist/main.cjs",
+  "module": "dist/main.js",
+  "types": "dist/main.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/main.cjs",
+      "import": "./dist/main.js",
+      "types": "./dist/main.d.ts"
+    }
   },
   "scripts": {
-    "test": "ava tests/index.js",
-    "start": "echo 'Remember to fix the package.json before release' && node index.js"
+    "build": "tsup",
+    "watch": "tsup --watch",
+    "fix": "run-s fix:lint",
+    "fix:lint": "ts-standard --fix src",
+    "clean:test": "rm -rf tmp/tests",
+    "test": "run-s clean:test test:lint test:build test:unit",
+    "test:build": "tsup --env.TEST=yes",
+    "test:lint": "ts-standard src",
+    "test:unit": "ava"
   },
-  "prettier": {
-    "singleQuote": true,
-    "trailingComma": "es5",
-    "semi": false
+  "license": "MIT",
+  "homepage": "https://grantcodes.github.io/indieauth-helper",
+  "engines": {
+    "node": ">=18"
+  },
+  "bugs": {
+    "url": "https://github.com/grantcodes/indieauth-helper/issues",
+    "email": "mail@grant.codes"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grantcodes/indieauth-helper.git"
+  },
+  "author": {
+    "url": "https://grant.codes",
+    "name": "Grant Richmond",
+    "email": "mail@grant.codes"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "crypto-js": "^4.1.1",
+    "qs": "^6.11.2",
+    "rel-parser": "^2.0.0"
   },
   "devDependencies": {
-    "ava": "^3.5.1",
-    "express": "^4.17.1"
+    "@ava/typescript": "^4.1.0",
+    "@grantcodes/commit": "^1.0.7",
+    "ava": "^5.3.1",
+    "npm-run-all": "^4.1.5",
+    "ts-standard": "^12.0.2",
+    "tsup": "^7.2.0",
+    "typescript": "^5.1.6",
+    "express": "^4.18.2"
   }
 }
