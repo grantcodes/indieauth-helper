@@ -1,50 +1,117 @@
-const axios = require('axios')
-const relScraper = require('rel-parser')
-const CryptoJS = require('crypto-js')
-const { parse: qsParse, stringify: qsStringify } = require('qs')
+import relScraper from 'rel-parser'
+import CryptoJS from 'crypto-js'
+import { parse as qsParse, stringify as qsStringify } from 'qs'
+import { IndieAuthError } from './lib/indieauth-error'
+import { validateUrl } from './lib/validate-url'
+import { generateState, validateState } from './lib/state'
+import type { IndieAuthOptions } from './types'
 
-const defaultSettings = {
+const defaultSettings: IndieAuthOptions = {
   me: '',
+  clientId: '',
+  redirectUri: '',
   authEndpoint: '',
-  tokenEndpoint: '',
-}
-
-/**
- * Creates an error object
- * @param {string} message A human readable error message
- * @param {int} status A http response status from the indieAuth endpoint
- * @param {object} error A full error object if available
- * @return {object} A consistently formatted error object
- */
-const indieAuthError = (message, status = null, error = null) => {
-  if (error && error.message && error.error) {
-    // Don't want to have nested errors.
-    error = error.error
-    message = error.message
-  }
-  return { message, status, error }
+  tokenEndpoint: ''
 }
 
 /**
  * A indieAuth helper class
  */
 class IndieAuth {
+  _me: string = ''
+  _clientId: string = ''
+  _redirectUri: string = ''
+  _state: string = ''
+  _secret: string = ''
+  _codeVerifier: string = ''
+  _authEndpoint: string = ''
+  _tokenEndpoint: string = ''
+
+  get me (): string {
+    return this._me
+  }
+
+  set me (value: string) {
+    validateUrl(value)
+    this._me = value
+  }
+
+  get clientId (): string {
+    return this._clientId
+  }
+
+  set clientId (value: string) {
+    validateUrl(value)
+    this._clientId = value
+  }
+
+  get redirectUri (): string {
+    return this._redirectUri
+  }
+
+  set redirectUri (value: string) {
+    validateUrl(value)
+    this._redirectUri = value
+  }
+
+  get tokenEndpoint (): string {
+    return this._tokenEndpoint
+  }
+
+  set tokenEndpoint (value: string) {
+    validateUrl(value)
+    this._tokenEndpoint = value
+  }
+
+  get authEndpoint (): string {
+    return this._authEndpoint
+  }
+
+  set authEndpoint (value: string) {
+    validateUrl(value)
+    this._authEndpoint = value
+  }
+  
+  get secret (): string {
+    return this._secret
+  }
+
+  set secret (value: string) {
+    this._secret = value
+  }
+ 
+  get state(): string {
+    return this._state
+  }
+
+  set state (value: string) {
+    this._state = value
+  }
+
+  get codeVerifier (): string {
+    return this._codeVerifier
+  }
+
+  set codeVerifier (value: string) {
+    this._codeVerifier = value
+  }
+
+
   /**
    * Micropub class constructor
    * @param {object} userSettings Settings supplied for this indieAuth client
    */
-  constructor(userSettings = {}) {
-    this.options = Object.assign({}, defaultSettings, userSettings)
-
-    // Bind all the things
-    this.checkRequiredOptions = this.checkRequiredOptions.bind(this)
-    this.getAuthUrl = this.getAuthUrl.bind(this)
-    this.getRelsFromUrl = this.getRelsFromUrl.bind(this)
-    this.verifyCode = this.verifyCode.bind(this)
-    this.getToken = this.getToken.bind(this)
-    this.generateState = this.generateState.bind(this)
-    this.autoGenerateState = this.autoGenerateState.bind(this)
-    this.validateState = this.validateState.bind(this)
+  constructor (userSettings: IndieAuthOptions) {
+    const initialOptions = { ...defaultSettings, ...userSettings }
+    
+    this.me = initialOptions.me
+    this.clientId = initialOptions.clientId
+    this.redirectUri = initialOptions.redirectUri
+    this.state = initialOptions.state
+    this.secret = initialOptions.secret
+    this.codeVerifier = initialOptions.codeVerifier
+    this.authEndpoint = initialOptions.authEndpoint
+    this.tokenEndpoint = initialOptions.tokenEndpoint
   }
 
   /**
@@ -52,19 +119,21 @@ class IndieAuth {
    * @param  {array} requirements An array of option keys to check
    * @return {object}             An object with boolean pass property and array missing property listing missing options
    */
-  checkRequiredOptions(requirements) {
-    let missing = []
+  checkRequiredOptions (requirements: Array<keyof IndieAuthOptions>): true {
+    const missing = []
     let pass = true
     for (const optionName of requirements) {
-      const option = this.options[optionName]
-      if (!option) {
+      const option = this.[optionName]
+      if (typeof option === 'undefined' || option === '' || option === null) {
         pass = false
         missing.push(optionName)
       }
     }
 
     if (!pass) {
-      throw indieAuthError('Missing required options: ' + missing.join(', '))
+      throw new IndieAuthError(
+        'Missing required options: ' + missing.join(', ')
+      )
     }
 
     return true
@@ -76,7 +145,7 @@ class IndieAuth {
    * @param  {string} url The url to canonicalize
    * @return {string}     The canonicalized url.
    */
-  getCanonicalUrl(url) {
+  getCanonicalUrl (url: string): string {
     return new URL(url).href
   }
 
@@ -84,20 +153,10 @@ class IndieAuth {
    * Fetch a URL, keeping track of 301 redirects to update
    * https://indieauth.spec.indieweb.org/#redirect-examples
    * @param  {string} url The url to scrape
-   * @return {Promise}    Passes the axios response object and the "final" url.
+   * @return {Promise}    Passes the fetch response object and the "final" url.
    */
-  async getUrlWithRedirects(url) {
-    const request = {
-      url,
-      method: 'GET',
-      responseType: 'text',
-      maxRedirects: 0,
-      headers: {
-        accept: 'text/html,application/xhtml+xml'
-      }
-    }
-
-    const getRedirectUrl = (to, from) => {
+  async getUrlWithRedirects (url: string): Promise<any> {
+    const getRedirectUrl = (to: string, from: string): string => {
       if (!to.startsWith('http')) {
         return new URL(to, from).toString()
       } else {
@@ -106,18 +165,26 @@ class IndieAuth {
     }
 
     try {
-      const res = await axios(request)
-      return { url, response: res }
+      const res = await fetch(url, {
+        method: 'GET',
+        redirect: 'error',
+        headers: {
+          accept: 'text/html,application/xhtml+xml'
+        }
+      })
+
+      const resText = await res.text()
+
+      return { url, response: resText }
     } catch (err) {
+      console.warn('Error getting url with redirects', err)
       if (err.response) {
         const res = err.response
         if (res.status === 301 || res.status === 308) {
           // Permanent redirect means we use this new url as canonical so, recurse on the new url!
           const redirectUrl = getRedirectUrl(res.headers.location, url)
-          const {
-            response: redirectRes,
-            url: followUrl,
-          } = await this.getUrlWithRedirects(redirectUrl)
+          const { response: redirectRes, url: followUrl } =
+            await this.getUrlWithRedirects(redirectUrl)
           return { url: followUrl, response: redirectRes }
         } else if (res.status === 302 || res.status === 307) {
           // Temporary redirect means we use the new url for discovery, but don't treat it as canonical
@@ -126,19 +193,20 @@ class IndieAuth {
           if (tmp.response.status > 199 && tmp.response.status < 300) {
             return { response: tmp.response, url }
           }
-          throw indieAuthError(
+
+          // TODO: Pass more error data
+          throw new IndieAuthError(
             'Error following redirects for ' + url,
-            tmp && tmp.response && tmp.response.status
-              ? tmp.response.status
-              : null,
-            tmp.response
+            tmp?.response?.status
+            // tmp.response
           )
         }
       }
-      throw indieAuthError(
+      // TODO: Pass more error data
+      throw new IndieAuthError(
         'Error getting ' + url,
-        err && err.response ? err.response.status : null,
-        err
+        err?.response?.status
+        // err
       )
     }
   }
@@ -150,8 +218,9 @@ class IndieAuth {
    * @return {Promise}    Passes an object of endpoints on success: `authorization_endpoint`, `token_endpoint` and any extras.
    *                      If a requested rel was not found it will have a null value.
    *                      Note: Will only pass the first value of any rel if there are multiple results.
+   * TODO: should return a better type
    */
-  async getRelsFromUrl(url, extraRels = []) {
+  async getRelsFromUrl (url: string, extraRels: string[] = []): Promise<any> {
     url = this.getCanonicalUrl(url)
     try {
       const toFind = ['authorization_endpoint', 'token_endpoint', ...extraRels]
@@ -159,34 +228,32 @@ class IndieAuth {
       const { response: res, url: finalUrl } = await this.getUrlWithRedirects(
         url
       )
-      this.options.me = finalUrl
+      this.me = finalUrl
       // Get rel links
       const rels = await relScraper(finalUrl, res.data, res.headers)
 
-      const foundRels = {}
+      const foundRels: any = {}
 
-      if (rels) {
-        for (const key of toFind) {
-          foundRels[key] = rels[key] && rels[key][0] ? rels[key][0] : null
-        }
+      for (const key of toFind) {
+        foundRels[key] = rels[key] && rels[key][0] ? rels[key][0] : null
       }
 
-      if (!foundRels.authorization_endpoint) {
-        throw indieAuthError('No authorization endpoint found')
+      if (typeof foundRels.authorization_endpoint === 'undefined') {
+        throw new IndieAuthError('No authorization endpoint found')
       }
 
-      this.options.authEndpoint = foundRels.authorization_endpoint
+      this.authEndpoint = foundRels.authorization_endpoint
 
-      if (foundRels.token_endpoint) {
-        this.options.tokenEndpoint = foundRels.token_endpoint
+      if (typeof foundRels.token_endpoint !== 'undefined') {
+        this.tokenEndpoint = foundRels.token_endpoint
       }
 
       return foundRels
     } catch (err) {
-      throw indieAuthError(
+      throw new IndieAuthError(
         'Error getting rels from url',
-        err && err.response ? err.response.status : null,
-        err
+        err?.response?.status
+        // err
       )
     }
   }
@@ -196,67 +263,69 @@ class IndieAuth {
    * @param {string} code A code received from the auth endpoint
    * @return {Promise} Promise which resolves with the access token on success
    */
-  async getToken(code) {
+  async getToken (code: string): Promise<string> {
     this.checkRequiredOptions([
       'me',
       'clientId',
       'redirectUri',
-      'tokenEndpoint',
+      'tokenEndpoint'
     ])
 
     try {
-      const data = {
+      const data: any = {
         grant_type: 'authorization_code',
-        me: this.options.me,
-        code: code,
-        client_id: this.options.clientId,
-        redirect_uri: this.options.redirectUri,
+        me: this.me,
+        code,
+        client_id: this.clientId,
+        redirect_uri: this.redirectUri
       }
 
       // Add PKCE code verifier if it is set
-      if (this.options.codeVerifier) {
-        data.code_verifier = this.options.codeVerifier
+      if (typeof this.codeVerifier !== 'undefined') {
+        data.code_verifier = this.codeVerifier
       }
 
-      const request = {
-        url: this.options.tokenEndpoint,
+      const res = await fetch(this.tokenEndpoint, {
         method: 'POST',
-        data: qsStringify(data),
+        body: qsStringify(data),
         headers: {
           'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
-          accept: 'application/json, application/x-www-form-urlencoded',
-        },
-      }
-      // This could maybe use the postMicropub method
-      const res = await axios(request)
-      let result = res.data
+          accept: 'application/json, application/x-www-form-urlencoded'
+        }
+      })
+
+      // Figure out the type of the response.
+
       // Parse the response from the indieauth server
       if (typeof result === 'string') {
         result = qsParse(result)
       }
-      if (result.error_description) {
-        throw indieAuthError(result.error_description)
+      if (
+        typeof result.error_description !== 'undefined' &&
+        result.error_description !== ''
+      ) {
+        throw new IndieAuthError(result.error_description)
       } else if (result.error) {
-        throw indieAuthError(result.error)
+        throw new IndieAuthError(result.error)
       }
       if (!result.me || !result.scope || !result.access_token) {
-        throw indieAuthError(
+        throw new IndieAuthError(
           'The token endpoint did not return the expected parameters'
         )
       }
       // Check "me" values have the same hostname
-      let urlResult = new URL(result.me)
-      let urlOptions = new URL(this.options.me)
-      if (urlResult.hostname != urlOptions.hostname) {
-        throw indieAuthError('The me values do not share the same hostname')
+      const urlResult = new URL(result.me)
+      const urlOptions = new URL(this.me)
+      if (urlResult.hostname !== urlOptions.hostname) {
+        throw new IndieAuthError('The me values do not share the same hostname')
       }
       // Successfully got the token
       return result.access_token
     } catch (err) {
-      throw indieAuthError(
+      throw new IndieAuthError(
         'Error requesting token endpoint',
-        err.response.status,
-        err
+        err?.response?.status
+        // err
       )
     }
   }
@@ -267,18 +336,24 @@ class IndieAuth {
    * @param {array} scopes An array of scopes to send to the auth endpoint.
    * @return {Promise} Passes the authentication url on success
    */
-  async getAuthUrl(responseType = 'id', scopes = []) {
+  async getAuthUrl (
+    responseType: string = 'id',
+    scopes: string[] = []
+  ): Promise<string> {
     this.autoGenerateState()
     this.checkRequiredOptions(['me', 'state'])
     if (responseType === 'code' && scopes.length === 0) {
       // If doing code auth you also need scopes.
-      throw indieAuthError(
+      throw new IndieAuthError(
         'You need to provide some scopes when using response type "code"'
       )
     }
     try {
-      if (!this.options.authEndpoint) {
-        await this.getRelsFromUrl(this.options.me)
+      if (
+        typeof this.authEndpoint === 'undefined' ||
+        this.authEndpoint === ''
+      ) {
+        await this.getRelsFromUrl(this.me)
       }
 
       this.checkRequiredOptions([
@@ -286,24 +361,28 @@ class IndieAuth {
         'state',
         'clientId',
         'redirectUri',
-        'authEndpoint',
+        'authEndpoint'
       ])
 
-      const authUrl = new URL(this.options.authEndpoint)
-      authUrl.searchParams.append('me', this.options.me)
-      authUrl.searchParams.append('client_id', this.options.clientId)
-      authUrl.searchParams.append('redirect_uri', this.options.redirectUri)
+      const authUrl = new URL(this.authEndpoint as string)
+      authUrl.searchParams.append('me', this.me)
+      authUrl.searchParams.append('client_id', this.clientId)
+      authUrl.searchParams.append('redirect_uri', this.redirectUri)
       authUrl.searchParams.append('response_type', responseType)
-      authUrl.searchParams.append('state', this.options.state)
+      authUrl.searchParams.append('state', this.state as string)
 
-      if (scopes.length) {
+      if (scopes.length > 0) {
         authUrl.searchParams.append('scope', scopes.join(' '))
       }
 
       // Add a PKCE code challenge if a code verifier is set.
-      if (responseType === 'code' && this.options.codeVerifier) {
+      if (
+        responseType === 'code' &&
+        typeof this.codeVerifier !== 'undefined' &&
+        this.codeVerifier !== ''
+      ) {
         const codeChallenge = encodeURIComponent(
-          CryptoJS.SHA256(this.options.codeVerifier)
+          CryptoJS.SHA256(this.codeVerifier)
         )
         authUrl.searchParams.append('code_challenge_method', 'S256')
         authUrl.searchParams.append('code_challenge', codeChallenge)
@@ -311,7 +390,7 @@ class IndieAuth {
 
       return authUrl.toString()
     } catch (err) {
-      throw indieAuthError('Error getting auth url', null, err)
+      throw new IndieAuthError('Error getting auth url', undefined /*, err */)
     }
   }
 
@@ -320,59 +399,57 @@ class IndieAuth {
    * @param {string} code The code to verify
    * @returns {Promise} If the code is valid then the promise is resolved with the `me` value
    */
-  async verifyCode(code) {
+  async verifyCode (code: string): Promise<string> {
     this.checkRequiredOptions(['me', 'clientId', 'redirectUri', 'authEndpoint'])
 
-    const data = {
-      code,
-      client_id: this.options.clientId,
-      redirect_uri: this.options.redirectUri,
-    }
-
-    const request = {
-      url: this.options.authEndpoint,
-      method: 'POST',
-      data: qsStringify(data),
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-        Accept: 'application/json, application/x-www-form-urlencoded',
-      },
-    }
-
     try {
-      const res = await axios(request)
+      const postData = {
+        code,
+        client_id: this.clientId,
+        redirect_uri: this.redirectUri
+      }
+
+      const res = await fetch(this.authEndpoint, {
+        method: 'POST',
+        body: qsStringify(postData),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          Accept: 'application/json, application/x-www-form-urlencoded'
+        }
+      })
+
       if (res.status < 200 || res.status > 299) {
-        throw new Error('Error verifying code', res.status, res)
+        throw new IndieAuthError('Error verifying code', res.status /* res */)
       }
       let { data } = res
       if (typeof data === 'string') {
         data = qsParse(data)
       }
       if (data.error_description) {
-        throw indieAuthError(data.error_description)
+        throw new IndieAuthError(data.error_description)
       } else if (data.error) {
-        throw indieAuthError(data.error)
+        throw new IndieAuthError(data.error)
       }
       if (!data.me) {
-        throw indieAuthError(
+        throw new IndieAuthError(
           'The auth endpoint did not return the "me" parameter while verifying the code'
         )
       }
       // Check me is the same (removing any trailing slashes)
       if (
         data.me &&
-        data.me.replace(/\/+$/, '') !== this.options.me.replace(/\/+$/, '')
+        data.me.replace(/\/+$/, '') !== this.me.replace(/\/+$/, '')
       ) {
-        throw indieAuthError('The me values did not match')
+        throw new IndieAuthError('The me values did not match')
       }
 
-      if (!this.options.me) {
-        this.options.me = data.me
+      if (!this.me) {
+        this.me = data.me
       }
 
       return data.me
     } catch (err) {
-      throw indieAuthError('Error verifying authorization code')
+      throw new IndieAuthError('Error verifying authorization code')
     }
   }
 
@@ -381,28 +458,26 @@ class IndieAuth {
    * @param {string} The token to verify
    * @return {Promise} A promise that resolves true or rejects
    */
-  async verifyToken(token) {
+  async verifyToken (token: string): Promise<boolean> {
     this.checkRequiredOptions(['indieAuthEndpoint'])
 
     try {
-      const request = {
-        url: this.options.indieAuthEndpoint,
+      const res = await fetch(this.indieAuthEndpoint, {
         method: 'GET',
         headers: {
-          Authorization: 'Bearer ' + token,
-        },
-      }
+          Authorization: 'Bearer ' + token
+        }
+      })
 
-      const res = await axios(request)
       if (res.status === 200) {
         return true
       }
       throw res
     } catch (err) {
-      throw indieAuthError(
+      throw new IndieAuthError(
         'Error verifying token',
-        err && err.response ? err.response.status : null,
-        err
+        err?.response?.status
+        // err
       )
     }
   }
@@ -411,33 +486,28 @@ class IndieAuth {
    * Generates a unique, encrypted state value that doesn't need to be cached
    * @returns {string} A state string
    */
-  generateState() {
+  generateState (): string {
     this.checkRequiredOptions(['secret', 'me', 'clientId'])
-    let state = {
-      date: Date.now(),
-      me: this.options.me,
-      clientId: this.options.clientId,
-    }
-    state = CryptoJS.AES.encrypt(
-      JSON.stringify(state),
-      this.options.secret
-    ).toString()
+
+    const state = generateState(
+      this.me,
+      this.clientId,
+      this.secret
+    )
+
     return state
   }
 
   /**
-   * Uses `generateState` to set the `this.options.state` property if required
+   * Uses `generateState` to set the `this.state` property if required
    */
-  autoGenerateState() {
+  autoGenerateState (): void {
     try {
-      if (!this.options.state) {
-        this.checkRequiredOptions(['secret', 'me', 'clientId'])
-        this.options.state = this.generateState()
+      if (!this.state) {
+        this.state = this.generateState()
       }
-      return
     } catch (err) {
       // Something is missing to generate the state, but no need to throw an error.
-      return
     }
   }
 
@@ -446,26 +516,19 @@ class IndieAuth {
    * @param {string} state The state string
    * @returns {object|false} If successful it will return the validated state option. Which has `date`, `me` and `clientId` properties. Returns false on failure.
    */
-  validateState(state) {
+  validateState (state: string): object | false {
     this.checkRequiredOptions(['secret', 'clientId'])
     try {
-      state = JSON.parse(
-        CryptoJS.AES.decrypt(state, this.options.secret).toString(
-          CryptoJS.enc.Utf8
-        )
+      const stateObj = validateState(
+        state,
+        this.me,
+        this.clientId,
+        this.secret
       )
-      if (
-        state.clientId === this.options.clientId &&
-        state.date > Date.now() - 1000 * 60 * 10 &&
-        state.me
-      ) {
-        if (!this.options.me) {
-          this.options.me = state.me
-        }
-        return state
-      } else {
-        throw 'State is invalid'
+      if (this.me === '') {
+        this.me = stateObj.me
       }
+      return stateObj
     } catch (err) {
       return false
     }
@@ -476,7 +539,7 @@ class IndieAuth {
    * @param {int} length The character count of the random string. Defaults to 100. (NOTE: Will round up to an even number)
    * @returns {string} The random string
    */
-  generateRandomString(length = 100) {
+  generateRandomString (length: number = 100): string {
     // Create a random word array and convert it to a string
     // 1 word = 2 characters
     const wordArray = CryptoJS.lib.WordArray.random(Math.round(length / 2))
@@ -484,4 +547,5 @@ class IndieAuth {
   }
 }
 
-module.exports = IndieAuth
+export { IndieAuth }
+export default IndieAuth
