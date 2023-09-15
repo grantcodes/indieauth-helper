@@ -11,7 +11,10 @@ const defaultSettings: IndieAuthOptions = {
   clientId: '',
   redirectUri: '',
   authEndpoint: '',
-  tokenEndpoint: ''
+  tokenEndpoint: '',
+  state: '',
+  secret: '',
+  codeVerifier: ''
 }
 
 /**
@@ -71,7 +74,7 @@ class IndieAuth {
     validateUrl(value)
     this._authEndpoint = value
   }
-  
+
   get secret (): string {
     return this._secret
   }
@@ -79,8 +82,8 @@ class IndieAuth {
   set secret (value: string) {
     this._secret = value
   }
- 
-  get state(): string {
+
+  get state (): string {
     return this._state
   }
 
@@ -96,14 +99,13 @@ class IndieAuth {
     this._codeVerifier = value
   }
 
-
   /**
    * Micropub class constructor
    * @param {object} userSettings Settings supplied for this indieAuth client
    */
-  constructor (userSettings: IndieAuthOptions) {
+  constructor (userSettings: Partial<IndieAuthOptions>) {
     const initialOptions = { ...defaultSettings, ...userSettings }
-    
+
     this.me = initialOptions.me
     this.clientId = initialOptions.clientId
     this.redirectUri = initialOptions.redirectUri
@@ -123,7 +125,7 @@ class IndieAuth {
     const missing = []
     let pass = true
     for (const optionName of requirements) {
-      const option = this.[optionName]
+      const option = this?.[optionName]
       if (typeof option === 'undefined' || option === '' || option === null) {
         pass = false
         missing.push(optionName)
@@ -176,9 +178,11 @@ class IndieAuth {
       const resText = await res.text()
 
       return { url, response: resText }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Error getting url with redirects', err)
-      if (err.response) {
+
+      // TODO: This won't work.
+      if (err?.response !== null) {
         const res = err.response
         if (res.status === 301 || res.status === 308) {
           // Permanent redirect means we use this new url as canonical so, recurse on the new url!
@@ -235,7 +239,7 @@ class IndieAuth {
       const foundRels: any = {}
 
       for (const key of toFind) {
-        foundRels[key] = rels[key] && rels[key][0] ? rels[key][0] : null
+        foundRels[key] = rels?.[key]?.[0] ?? null
       }
 
       if (typeof foundRels.authorization_endpoint === 'undefined') {
@@ -249,7 +253,7 @@ class IndieAuth {
       }
 
       return foundRels
-    } catch (err) {
+    } catch (err: any) {
       throw new IndieAuthError(
         'Error getting rels from url',
         err?.response?.status
@@ -295,6 +299,13 @@ class IndieAuth {
       })
 
       // Figure out the type of the response.
+      let result: any = null
+      const headers = res.headers.get('content-type')
+      if (headers?.includes('application/json') === true) {
+        result = await res.json()
+      } else {
+        result = await res.text()
+      }
 
       // Parse the response from the indieauth server
       if (typeof result === 'string') {
@@ -305,10 +316,14 @@ class IndieAuth {
         result.error_description !== ''
       ) {
         throw new IndieAuthError(result.error_description)
-      } else if (result.error) {
+      } else if (result?.error !== 'undefined' && result.error !== '') {
         throw new IndieAuthError(result.error)
       }
-      if (!result.me || !result.scope || !result.access_token) {
+      if (
+        result?.me === 'undefined' ||
+        result?.scope === 'undefined' ||
+        result?.access_token === 'undefined'
+      ) {
         throw new IndieAuthError(
           'The token endpoint did not return the expected parameters'
         )
@@ -321,7 +336,7 @@ class IndieAuth {
       }
       // Successfully got the token
       return result.access_token
-    } catch (err) {
+    } catch (err: any) {
       throw new IndieAuthError(
         'Error requesting token endpoint',
         err?.response?.status
@@ -364,12 +379,12 @@ class IndieAuth {
         'authEndpoint'
       ])
 
-      const authUrl = new URL(this.authEndpoint as string)
+      const authUrl = new URL(this.authEndpoint)
       authUrl.searchParams.append('me', this.me)
       authUrl.searchParams.append('client_id', this.clientId)
       authUrl.searchParams.append('redirect_uri', this.redirectUri)
       authUrl.searchParams.append('response_type', responseType)
-      authUrl.searchParams.append('state', this.state as string)
+      authUrl.searchParams.append('state', this.state)
 
       if (scopes.length > 0) {
         authUrl.searchParams.append('scope', scopes.join(' '))
@@ -381,9 +396,8 @@ class IndieAuth {
         typeof this.codeVerifier !== 'undefined' &&
         this.codeVerifier !== ''
       ) {
-        const codeChallenge = encodeURIComponent(
-          CryptoJS.SHA256(this.codeVerifier)
-        )
+        const hashedVerifier = CryptoJS.SHA256(this.codeVerifier).toString()
+        const codeChallenge = encodeURIComponent(hashedVerifier)
         authUrl.searchParams.append('code_challenge_method', 'S256')
         authUrl.searchParams.append('code_challenge', codeChallenge)
       }
@@ -421,29 +435,37 @@ class IndieAuth {
       if (res.status < 200 || res.status > 299) {
         throw new IndieAuthError('Error verifying code', res.status /* res */)
       }
-      let { data } = res
+
+      let data: any = null
+      const headers = res.headers.get('content-type')
+      if (headers?.includes('application/json') === true) {
+        data = await res.json()
+      } else {
+        data = await res.text()
+      }
+
       if (typeof data === 'string') {
         data = qsParse(data)
       }
-      if (data.error_description) {
+      if (data?.error_description !== 'undefined') {
         throw new IndieAuthError(data.error_description)
-      } else if (data.error) {
+      } else if (data?.error !== 'undefined') {
         throw new IndieAuthError(data.error)
       }
-      if (!data.me) {
+      if (data?.me === 'undefined') {
         throw new IndieAuthError(
           'The auth endpoint did not return the "me" parameter while verifying the code'
         )
       }
       // Check me is the same (removing any trailing slashes)
       if (
-        data.me &&
+        data.me !== 'undefined' &&
         data.me.replace(/\/+$/, '') !== this.me.replace(/\/+$/, '')
       ) {
         throw new IndieAuthError('The me values did not match')
       }
 
-      if (!this.me) {
+      if (this.me === '') {
         this.me = data.me
       }
 
@@ -459,10 +481,10 @@ class IndieAuth {
    * @return {Promise} A promise that resolves true or rejects
    */
   async verifyToken (token: string): Promise<boolean> {
-    this.checkRequiredOptions(['indieAuthEndpoint'])
+    this.checkRequiredOptions(['authEndpoint'])
 
     try {
-      const res = await fetch(this.indieAuthEndpoint, {
+      const res = await fetch(this.authEndpoint, {
         method: 'GET',
         headers: {
           Authorization: 'Bearer ' + token
@@ -472,8 +494,9 @@ class IndieAuth {
       if (res.status === 200) {
         return true
       }
-      throw res
-    } catch (err) {
+
+      throw new Error()
+    } catch (err: any) {
       throw new IndieAuthError(
         'Error verifying token',
         err?.response?.status
@@ -489,11 +512,7 @@ class IndieAuth {
   generateState (): string {
     this.checkRequiredOptions(['secret', 'me', 'clientId'])
 
-    const state = generateState(
-      this.me,
-      this.clientId,
-      this.secret
-    )
+    const state = generateState(this.me, this.clientId, this.secret)
 
     return state
   }
@@ -503,7 +522,7 @@ class IndieAuth {
    */
   autoGenerateState (): void {
     try {
-      if (!this.state) {
+      if (this.state === '') {
         this.state = this.generateState()
       }
     } catch (err) {
@@ -519,12 +538,7 @@ class IndieAuth {
   validateState (state: string): object | false {
     this.checkRequiredOptions(['secret', 'clientId'])
     try {
-      const stateObj = validateState(
-        state,
-        this.me,
-        this.clientId,
-        this.secret
-      )
+      const stateObj = validateState(state, this.me, this.clientId, this.secret)
       if (this.me === '') {
         this.me = stateObj.me
       }
