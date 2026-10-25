@@ -49,7 +49,7 @@
     "fix": "biome check --write src",
     "typecheck": "tsc --noEmit",
     "test:build": "tsup --env.TEST=yes",
-    "test": "npm run lint && npm run typecheck && npm run test:build && node --test tmp/tests",
+    "test": "npm run lint && npm run typecheck && npm run test:build && node --test \"tmp/tests/**/*.test.js\"",
     "prepack": "npm run build"
   },
   "dependencies": {
