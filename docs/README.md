@@ -1,191 +1,207 @@
 # IndieAuth Helper
 
-A [IndieAuth](https://indieweb.org/IndieAuth) helper library for JavaScript.
+A [IndieAuth](https://indieauth.spec.indieweb.org/) helper library for JavaScript and TypeScript.
 
-## Usage
+This version implements the IndieAuth Living Standard (11 July 2024): metadata discovery, the authorization code flow, mandatory PKCE, `iss` validation, refresh tokens, revocation, introspection, and user info.
 
-### Client side usage
-
-Although this library is intended to be usable client side you will likely run into [CORS](https://en.wikipedia.org/wiki/Cross-origin_resource_sharing) issues and so be careful about that.
-
-### Installation
+## Installation
 
 ```bash
 npm install indieauth-helper
 ```
 
-or
-
-```bash
-yarn add indieauth-helper
-```
-
-### Setup
-
-The library is setup as an es6 class, and is initialized by passing an object of options.
+CommonJS consumers can use the named export:
 
 ```js
-import IndieAuth from 'indieauth-helper'
+const { IndieAuth } = require("indieauth-helper");
+```
+
+Requires Node.js 22.20 or later, or a browser with native `fetch`, `URL`, and `crypto.subtle`.
+
+## Quick start
+
+```ts
+import IndieAuth from "indieauth-helper";
+
 const auth = new IndieAuth({
-  clientId: 'https://myindieauthclientapp.com',
-  redirectUri: 'https://myindieauthclientapp.com/auth',
-  me: 'https://userindiewebsite.com',
-  secret: 'topSecretString',
-})
+  me: "https://user.example/",
+  clientId: "https://app.example/",
+  redirectUri: "https://app.example/callback",
+  secret: "a long random string",
+});
 
-// If you are able to store a variable between sending the user to the auth url
-// and requesting the auth token you should also set a `codeVerifier`
-const codeVerifier = auth.generateRandomString()
-auth.options.codeVerifier = codeVerifier
+await auth.discover();
+const authUrl = await auth.getAuthUrl({
+  scopes: ["profile", "create", "update"],
+});
+
+// Store these in the user's session before redirecting.
+const codeVerifier = auth.options.codeVerifier;
+const state = auth.options.state;
 ```
 
-If you already have other information stored such as the auth endpoint you want to use you can also pass those in. The available options are:
+Redirect the browser to `authUrl`. On the callback:
 
-- `me` - The url of the user you are authenticating with
-- `clientId` - The url of your IndieAuth client app
-- `redirectUri` - The redirect url of your IndieAuth client from the auth endpoint. This is the page where you will get the code to exchange for an access token.
-- `state` - A custom identifier to validate a response from the auth endpoint. If a state is not set and a secret is set then the state will be automatically generated and must be checked with the `validateState` method.
-- `secret` -A string that is used to encrypt and decrypt generated states
-- `codeVerifier` - A random string to use as a PKCE code verifier. It must be stored between sending the user to the auth url and requesting the auth token
-- `authEndpoint` - The authorization endpoint
-- `tokenEndpoint` - The token endpoint to receive the access toke from
+```ts
+const auth = new IndieAuth({
+  me: "https://user.example/",
+  clientId: "https://app.example/",
+  redirectUri: "https://app.example/callback",
+  secret: "a long random string",
+});
 
-You can directly retrieve and modify the options on an instantiated class with the `options` property:
+auth.options = { state, codeVerifier };
 
-```js
-// Get the user domain
-const me = auth.options.me
+const { code } = await auth.validateAuthorizationResponse(location.search);
+const token = await auth.getToken(code);
 
-// Change the me url
-auth.options.me = 'https://example.com'
+console.log(token.access_token, token.me, token.scope);
 ```
 
-### Getting site endpoints
+`getToken` returns the complete token response, including `access_token`, `token_type`, `me`, and optional `scope`, `profile`, `expires_in`, and `refresh_token`.
 
-You can get the various endpoints for a website - either from headers or `link` tags.
+## Discovery
 
-By default returns an object with `authorization_endpoint` and `token_endpoint` properties with the urls of the endpoints.
+`discover` fetches the user's URL, follows redirects, and looks for `rel="indieauth-metadata"` in HTTP `Link` headers or HTML `<link>` elements. It then fetches the IndieAuth server metadata document and stores the discovered endpoints and issuer.
 
-This method will also automatically set the endpoint options in the current instance so you can read `auth.options.authEndpoint` and `auth.options.tokenEndpoint`.
+```ts
+const discovery = await auth.discover("https://user.example/");
 
-```js
-auth
-  .getRelsFromUrl('http://example.com')
-  .then(rels => {
-    const { authorization_endpoint, token_endpoint } = rels
-  })
-  .catch(err => console.log(err))
+console.log(discovery.metadataEndpoint);
+console.log(discovery.authorization_endpoint);
+console.log(discovery.token_endpoint);
 ```
 
-Note: This is also run by the `getAuthUrl` method so chances are you will not need to use this method.
+If no metadata endpoint is advertised, it falls back to the legacy `authorization_endpoint` and `token_endpoint` link relations.
 
-The same method can also be used to attempt to find any other rel value from the given url by passing in an array of rels you want.
+HTTP `Link` headers take precedence over HTML `<link>` elements. Relative URLs are resolved against the current document. `301` and `308` redirects update the canonical `me` URL; temporary redirects do not.
 
-By default the `authorization_endpoint` and `token_endpoint` are always requested and rels are normalized to lowercase. If a rel is not found it will have a `null` value.
+## Authorization URL
 
-```js
-auth
-  .getRelsFromUrl('http://example.com', ['micropub', 'microsub'])
-  .then(rels => {
-    const { authorization_endpoint, token_endpoint, micropub, microsub } = rels
-  })
-  .catch(err => console.log(err))
+```ts
+const url = await auth.getAuthUrl({
+  scopes: ["profile", "email", "create"],
+  state: "optional-custom-state",
+  codeVerifier: "optional-custom-verifier",
+});
 ```
 
-### Getting authorization url
+The authorization request always uses `response_type=code` and PKCE with `S256`.
 
-The first step is likely to be getting the authorization url to direct the user to.
+Unless supplied per call, a fresh state and code verifier are generated for every authorization request and stored on `auth.options`. Persist `auth.options.state` and `auth.options.codeVerifier` between the redirect and the callback.
 
-By default this method requests `response_type=id`.
+If a `secret` is set, the generated state is HMAC-signed and validated with `validateState`. Without a `secret`, the state is an opaque random string and `validateAuthorizationResponse` compares it exactly.
 
-```js
-auth
-  .getAuthUrl()
-  .then(url => {
-    // Handle directing user to this url to authenticate
-  })
-  .catch(err => console.log(err))
+## Validating the callback
+
+```ts
+const { code, state, iss } = await auth.validateAuthorizationResponse(
+  location.search,
+);
 ```
 
-If you want to request `response_type=code` with some scopes you can pass the `response_type` string in the first param and an array of scopes in the second:
+This validates the state, rejects `error` responses, requires a `code`, and verifies the `iss` parameter against the discovered issuer. If an issuer is known, `iss` is required and must match exactly.
 
-```js
-auth
-  .getAuthUrl('code', ['create', 'update'])
-  .then(url => {
-    // When doing `response_type=code` you will probably want to store the `auth.options.tokenEndpoint` value to talk to the token endpoint in the next step.
-    // Then handle directing user to this url to authenticate
-  })
-  .catch(err => console.log(err))
+## Token responses
+
+`getToken` exchanges an authorization code at the token endpoint.
+
+`verifyCode` exchanges the code at the authorization endpoint when you only need the user's profile URL and do not need an access token.
+
+```ts
+const token = await auth.getToken(code);
+const profile = await auth.verifyCode(code);
 ```
 
-Because this method also calls the `getRelsFromUrl` method the instance will also hold the found auth and token endpoints.
+Both methods confirm that a returned `me` URL that differs from the discovered URL declares the same authorization server, as required by the spec.
 
-### State generation and validation
+## Refresh, revoke, introspect, and user info
 
-State values should always be unique and verified when requesting an access code from the authorization endpoint.
+```ts
+const refreshed = await auth.refreshToken(token.refresh_token, ["profile"]);
 
-To help with this this library has a couple of methods to generate and validate state strings without the need for caching them between requests.
+await auth.revokeToken(token.access_token);
 
-To use these methods you first need to have a `secret` option set as well as the `clientId` option.
+const introspection = await auth.introspectToken(token.access_token);
+if (introspection.active) {
+  console.log(introspection.me, introspection.scope);
+}
 
-If you do not explicitly set a state value one will automatically be generated with the `generateState` method.
-
-The `generateState` method also required the `me` option to be set.
-
-```js
-auth.options.secret = 'privateSecretValue'
-const state = auth.generateState()
+const user = await auth.getUserInfo(token.access_token);
 ```
 
-Then the state string can be validated to return a object:
+`verifyToken` is a convenience wrapper that returns `introspection.active`.
 
-```js
-const { date, me, clientId } = auth.validateState(state)
+If an endpoint was not supplied, these methods discover it from `me` when possible.
+
+## Options
+
+| Option | Description |
+| --- | --- |
+| `me` | The user's profile URL. A bare host is upgraded to `https://`. |
+| `clientId` | The client identifier URL. Must be `https`. |
+| `redirectUri` | The redirect URL registered with the client. |
+| `authEndpoint` | Authorization endpoint. Discovered when omitted. |
+| `tokenEndpoint` | Token endpoint. Discovered when omitted. |
+| `metadataEndpoint` | IndieAuth metadata endpoint. Discovered when omitted. |
+| `issuer` | Authorization server issuer identifier. Discovered when omitted. |
+| `introspectionEndpoint` | Token introspection endpoint. |
+| `introspectionToken` | Optional bearer token used to authenticate introspection requests. Defaults to the token being inspected. |
+| `revocationEndpoint` | Token revocation endpoint. Falls back to `tokenEndpoint` with `action=revoke`. |
+| `userinfoEndpoint` | User info endpoint. |
+| `state` | State value for the current authorization request. |
+| `secret` | Secret used to sign generated state values. |
+| `codeVerifier` | PKCE code verifier for the current authorization request. |
+| `codeChallenge` | PKCE code challenge. Derived from `codeVerifier` when omitted. |
+| `stateMaxAge` | Maximum state age in milliseconds. Defaults to 10 minutes. |
+
+Options can be read from `auth.options` and updated with the setter:
+
+```ts
+auth.options = { state: "new-state" };
 ```
 
-### Verify the auth code
+Unknown options and invalid URLs are rejected with an `IndieAuthError`.
 
-Once you have an auth code you may want to check that it is valid against the auth endpoint.
-You first need to initialize the library with the details you used to get the auth code and then pass the code to the `verifyCode` method:
+## Other methods
 
-```js
-auth
-  .verifyCode('auth_code_goes_here')
-  .then(me => {
-    // Returns the me value on success
-  })
-  .catch(err => console.log(err))
+```ts
+const pkce = await auth.generatePkce();
+const state = await auth.generateState();
+const payload = await auth.validateState(state);
+const random = auth.generateRandomString(64);
+
+auth.isValidProfileUrl("https://user.example/");
+auth.isValidClientId("https://app.example/");
+auth.getCanonicalUrl("example.com");
 ```
 
-### Exchange your code for an access token
+`generateRandomString` uses `crypto.getRandomValues` and the PKCE character set by default.
 
-If you requested `response_type=code` the next step would be to exchange your code for an access token.
-You first need to initialize the library with the details you used to get the auth code and then pass the code to the auth token method:
+## Errors
 
-```js
-auth
-  .getToken('auth_code_goes_here')
-  .then(token => {
-    // Here you will probably want to save the token for future use
-  })
-  .catch(err => console.log(err))
-```
+Methods reject with `IndieAuthError`, which extends `Error`:
 
-### Error handling
-
-If there are any errors then the methods will reject with an object:
-
-```js
-{
-  message: 'Human readable string',
-  status: null or the http status code,
-  error: null or further error information,
+```ts
+try {
+  await auth.getToken(code);
+} catch (error) {
+  if (error instanceof IndieAuthError) {
+    console.error(error.message, error.status, error.error);
+  }
 }
 ```
 
-Generally if there is a `status` code that means that a requested url returned an unexpected http error.
-This might not be 100% accurate as there are a lot of potential errors.
+`status` is the HTTP status when the error came from a server response. `error` contains the parsed response body when available.
+
+## Migrating from v1
+
+- `response_type=id` is no longer supported. The default and only response type is `code`.
+- `getToken` returns the full token response instead of only the access token string.
+- `getRelsFromUrl` is replaced by `discover`.
+- `generateState`, `validateState`, `getAuthUrl`, and `generatePkce` are asynchronous.
+- Errors are `IndieAuthError` instances instead of plain objects.
+- `axios`, `qs`, and `crypto-js` were replaced with native `fetch`, `URLSearchParams`, and WebCrypto.
 
 ## Thanks
 
