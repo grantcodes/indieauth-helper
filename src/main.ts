@@ -220,6 +220,10 @@ function readProfile(data: Record<string, unknown>): UserProfile | undefined {
 	return data.profile as UserProfile;
 }
 
+/**
+ * IndieAuth client implementing the IndieAuth Living Standard (11 July 2024).
+ * https://indieauth.spec.indieweb.org/
+ */
 export class IndieAuth {
 	#options: IndieAuthOptions = { ...DEFAULT_OPTIONS };
 	#metadata: IndieAuthMetadata | null = null;
@@ -322,6 +326,7 @@ export class IndieAuth {
 		return isValidClientId(url);
 	}
 
+	/** Client and authorization server discovery: https://indieauth.spec.indieweb.org/#x4-discovery */
 	async discover(
 		me = this.#options.me,
 		extraRels: string[] = [],
@@ -331,6 +336,7 @@ export class IndieAuth {
 		return result;
 	}
 
+	/** Authorization request: https://indieauth.spec.indieweb.org/#x5-2-authorization-request */
 	async getAuthUrl(options: AuthUrlOptions = {}): Promise<string> {
 		if (options.responseType && options.responseType !== "code") {
 			throw new IndieAuthError('Only response_type "code" is supported');
@@ -417,6 +423,7 @@ export class IndieAuth {
 		return authUrl.toString();
 	}
 
+	/** Redeeming the authorization code: https://indieauth.spec.indieweb.org/#x5-3-redeeming-the-authorization-code */
 	async getToken(code: string): Promise<TokenResponse> {
 		if (!this.#options.tokenEndpoint && this.#options.me) {
 			await this.discover(this.#options.me);
@@ -448,6 +455,7 @@ export class IndieAuth {
 		return token;
 	}
 
+	/** Authorization code verification (legacy IndieAuth profile flow): https://indieauth.spec.indieweb.org/#x5-3-redeeming-the-authorization-code */
 	async verifyCode(code: string): Promise<ProfileResponse> {
 		if (!this.#options.authEndpoint && this.#options.me) {
 			await this.discover(this.#options.me);
@@ -489,6 +497,7 @@ export class IndieAuth {
 		};
 	}
 
+	/** Refresh tokens: https://indieauth.spec.indieweb.org/#x5-5-refresh-tokens */
 	async refreshToken(
 		refreshToken: string,
 		scopes?: string[],
@@ -520,6 +529,7 @@ export class IndieAuth {
 		return token;
 	}
 
+	/** Token revocation: https://indieauth.spec.indieweb.org/#x7-token-revocation */
 	async revokeToken(token: string): Promise<void> {
 		if (
 			!this.#options.revocationEndpoint &&
@@ -545,6 +555,7 @@ export class IndieAuth {
 		await requestForm(endpoint, body, "Error revoking token");
 	}
 
+	/** Access token verification request: https://indieauth.spec.indieweb.org/#x6-1-access-token-verification-request */
 	async introspectToken(token: string): Promise<TokenIntrospection> {
 		if (
 			!this.#options.introspectionEndpoint &&
@@ -600,11 +611,13 @@ export class IndieAuth {
 		return { ...data, active } as TokenIntrospection;
 	}
 
+	/** Access token verification: https://indieauth.spec.indieweb.org/#x6-access-token-verification */
 	async verifyToken(token: string): Promise<boolean> {
 		const result = await this.introspectToken(token);
 		return result.active;
 	}
 
+	/** User information: https://indieauth.spec.indieweb.org/#x9-user-information */
 	async getUserInfo(token: string): Promise<UserProfile> {
 		if (!this.#options.userinfoEndpoint && this.#options.me) {
 			await this.discover(this.#options.me);
@@ -626,6 +639,7 @@ export class IndieAuth {
 		return data as UserProfile;
 	}
 
+	/** Authorization server confirmation (state and iss): https://indieauth.spec.indieweb.org/#x5-4-authorization-server-confirmation */
 	async validateAuthorizationResponse(
 		input: AuthorizationResponseInput,
 	): Promise<AuthorizationResponse> {
