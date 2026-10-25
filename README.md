@@ -1,10 +1,26 @@
 # IndieAuth Helper
 
-A [IndieAuth](https://indieweb.org/IndieAuth) helper library for JavaScript.
+A [IndieAuth](https://indieauth.spec.indieweb.org/) helper library for JavaScript and TypeScript, implementing the IndieAuth Living Standard (11 July 2024).
 
-## Docs
+```bash
+npm install indieauth-helper
+```
 
-Checkout the documentation at [https://grantcodes.github.io/indieauth-helper/](https://grantcodes.github.io/indieauth-helper/)
+```ts
+import IndieAuth from "indieauth-helper";
+
+const auth = new IndieAuth({
+  me: "https://user.example/",
+  clientId: "https://app.example/",
+  redirectUri: "https://app.example/callback",
+  secret: "a long random string",
+});
+
+await auth.discover();
+const authUrl = await auth.getAuthUrl({ scopes: ["profile", "create"] });
+```
+
+Full documentation: [https://grantcodes.github.io/indieauth-helper/](https://grantcodes.github.io/indieauth-helper/)
 
 ## Thanks
 

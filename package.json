@@ -4,31 +4,61 @@
   "description": "A simple helper class for creating IndieAuth clients",
   "keywords": [
     "indieauth",
-    "indieweb"
+    "indieweb",
+    "oauth",
+    "pkce"
   ],
+  "type": "module",
+  "main": "./dist/main.cjs",
+  "module": "./dist/main.js",
+  "types": "./dist/main.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/main.d.ts",
+        "default": "./dist/main.js"
+      },
+      "require": {
+        "types": "./dist/main.d.cts",
+        "default": "./dist/main.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist/**/*",
+    "!**/*.test.*",
+    "CHANGELOG.md",
+    "README.md"
+  ],
+  "sideEffects": false,
   "homepage": "https://grantcodes.github.io/indieauth-helper",
-  "repository": "https://github.com/grantcodes/indieauth-helper",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grantcodes/indieauth-helper.git"
+  },
   "bugs": "https://github.com/grantcodes/indieauth-helper/issues",
-  "main": "./src/main.js",
   "author": "Grant Richmond <mail@grant.codes> (https://grant.codes)",
   "license": "MIT",
-  "dependencies": {
-    "axios": "^0.19.2",
-    "qs": "^6.9.3",
-    "rel-parser": "^1.0.2",
-    "crypto-js": "^4.0.0"
+  "engines": {
+    "node": ">=22.20.0"
   },
   "scripts": {
-    "test": "ava tests/index.js",
-    "start": "echo 'Remember to fix the package.json before release' && node index.js"
+    "build": "tsup",
+    "watch": "tsup --watch",
+    "lint": "biome check src",
+    "fix": "biome check --write src",
+    "typecheck": "tsc --noEmit",
+    "test:build": "tsup --env.TEST=yes",
+    "test": "npm run lint && npm run typecheck && npm run test:build && node --test \"tmp/tests/**/*.test.js\"",
+    "prepack": "npm run build"
   },
-  "prettier": {
-    "singleQuote": true,
-    "trailingComma": "es5",
-    "semi": false
+  "dependencies": {
+    "rel-parser": "^3.0.1"
   },
   "devDependencies": {
-    "ava": "^3.5.1",
-    "express": "^4.17.1"
+    "@biomejs/biome": "^2.6.3",
+    "@types/node": "^24.10.7",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
   }
 }
