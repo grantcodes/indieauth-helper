@@ -210,6 +210,52 @@ describe("discovery", () => {
 		assert.equal(auth.options.issuer, "https://server.example/");
 	});
 
+	it("accepts RFC 8414 metadata for a path issuer", async () => {
+		const issuer = "https://indiekey.id/s/site-id/";
+		const metadataUrl =
+			"https://indiekey.id/.well-known/oauth-authorization-server/s/site-id";
+
+		mock.method(
+			globalThis,
+			"fetch",
+			async (input: string | URL | Request): Promise<Response> => {
+				const url = input instanceof Request ? input.url : String(input);
+				if (url === "https://user.example/") {
+					return new Response(
+						`<link rel="indieauth-metadata" href="${metadataUrl}">`,
+						{ headers: { "content-type": "text/html" } },
+					);
+				}
+				if (url === metadataUrl) {
+					return new Response(
+						JSON.stringify({
+							issuer,
+							authorization_endpoint: "https://indiekey.id/s/site-id/auth",
+							token_endpoint: "https://indiekey.id/token",
+						}),
+						{ headers: { "content-type": "application/json" } },
+					);
+				}
+				return new Response("Not found", { status: 404 });
+			},
+		);
+
+		const auth = makeAuth({ state: "state-value" });
+		await auth.discover();
+
+		assert.equal(auth.options.issuer, issuer);
+		assert.equal(
+			auth.options.authEndpoint,
+			"https://indiekey.id/s/site-id/auth",
+		);
+		const response = await auth.validateAuthorizationResponse({
+			code: "code",
+			state: "state-value",
+			iss: issuer,
+		});
+		assert.equal(response.iss, issuer);
+	});
+
 	it("rejects metadata whose issuer does not prefix the metadata URL", async () => {
 		const metadataUrl = "https://server.example/metadata";
 

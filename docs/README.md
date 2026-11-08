@@ -62,7 +62,7 @@ console.log(token.access_token, token.me, token.scope);
 
 ## Discovery
 
-`discover` fetches the user's URL, follows redirects, and looks for `rel="indieauth-metadata"` in HTTP `Link` headers or HTML `<link>` elements. It then fetches the IndieAuth server metadata document and stores the discovered endpoints and issuer.
+`discover` fetches the user's URL, follows redirects, and looks for `rel="indieauth-metadata"` in HTTP `Link` headers or HTML `<link>` elements. It then fetches the IndieAuth server metadata document and stores the discovered endpoints and issuer. The issuer must be a prefix of the metadata URL, or the metadata URL must be the RFC 8414 well-known form derived from the issuer (for example `https://server.example/.well-known/oauth-authorization-server/tenant` for issuer `https://server.example/tenant/`).
 
 ```ts
 const discovery = await auth.discover("https://user.example/");

@@ -119,6 +119,36 @@ describe("isValidIssuer", () => {
 		);
 	});
 
+	it("accepts an RFC 8414 well-known metadata URL for a path issuer", () => {
+		assert.equal(
+			isValidIssuer(
+				"https://indiekey.id/s/site-id/",
+				"https://indiekey.id/.well-known/oauth-authorization-server/s/site-id",
+			),
+			true,
+		);
+	});
+
+	it("rejects an RFC 8414 metadata URL for a different issuer path", () => {
+		assert.equal(
+			isValidIssuer(
+				"https://indiekey.id/s/site-id/",
+				"https://indiekey.id/.well-known/oauth-authorization-server/s/other-site",
+			),
+			false,
+		);
+	});
+
+	it("rejects an RFC 8414 metadata URL on a different origin", () => {
+		assert.equal(
+			isValidIssuer(
+				"https://indiekey.id/s/site-id/",
+				"https://other.example/.well-known/oauth-authorization-server/s/site-id",
+			),
+			false,
+		);
+	});
+
 	it("rejects a non-https issuer", () => {
 		assert.equal(
 			isValidIssuer("http://example.com/", "http://example.com/metadata"),
