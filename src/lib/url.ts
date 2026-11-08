@@ -85,7 +85,9 @@ export function isValidIssuer(issuer: string, metadataUrl: string): boolean {
 		if (url.protocol !== "https:" || url.search || url.hash) {
 			return false;
 		}
-		return metadataUrl.startsWith(issuer);
+		// RFC 8414 §3.1: the well-known string goes between the host and the issuer path.
+		const wellKnownUrl = `${url.origin}/.well-known/oauth-authorization-server${url.pathname.replace(/\/$/, "")}`;
+		return metadataUrl.startsWith(issuer) || metadataUrl === wellKnownUrl;
 	} catch {
 		return false;
 	}
