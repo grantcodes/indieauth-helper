@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1](https://github.com/grantcodes/indieauth-helper/compare/indieauth-helper-v2.0.0...indieauth-helper-v2.0.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* accept RFC 8414 well-known metadata URLs ([74104b7](https://github.com/grantcodes/indieauth-helper/commit/74104b718a99cdfa20d8afd2d5d0311886280719))
+* accept RFC 8414 well-known metadata URLs ([f3e2532](https://github.com/grantcodes/indieauth-helper/commit/f3e2532eeffa74821a7913e17991f72db45d3b9e))
+
 ## [2.0.0](https://github.com/grantcodes/indieauth-helper/compare/indieauth-helper-v1.0.2...indieauth-helper-v2.0.0) (2026-10-25)
 
 
